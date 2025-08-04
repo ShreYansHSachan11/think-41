@@ -1,10 +1,19 @@
-require('dotenv').config();
+const express = require("express");
+const dotenv = require('dotenv');
 const fs = require('fs');
 const csv = require('csv-parser');
 const mongoose = require('mongoose');
 
 const Customer = require('./models/user.model');
 const Order = require('./models/order.model');
+const userRoutes = require('./routes/user.routes');
+
+dotenv.config(); // <-- Only call this once
+
+const app = express();
+app.use(express.json());
+
+app.use('/api/users', userRoutes);
 
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,            
@@ -76,11 +85,16 @@ async function verifyCounts() {
     const customerCount = await Customer.countDocuments();
     const orderCount = await Order.countDocuments();
 
-    console.log(`Total Customers: ${customerCount}`);
-    console.log(`Total Orders: ${orderCount}`);
+    // console.log(`Total Customers: ${customerCount}`);
+    // console.log(`Total Orders: ${orderCount}`);
 
     
 }
 
 // Call the seed function
 seedDatabase();
+
+
+app.listen(process.env.PORT || 3000, () => {
+    console.log(`Server is running on port ${process.env.PORT || 3000}`);
+}   );
