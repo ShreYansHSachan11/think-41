@@ -14,6 +14,8 @@ const app = express();
 app.use(express.json());
 
 app.use('/api/users', userRoutes);
+app.use('/api/orders', require('./routes/order.routes'));
+
 
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,            
@@ -25,53 +27,72 @@ mongoose.connect(process.env.MONGODB_URI, {
   process.exit(1);
 });
 
-function loadCustomers(){
-    const customers = [];
-    fs.createReadStream('data/users.csv')
-        .pipe(csv())
-        .on('data', (row) => {
-            const age = parseInt(row.age);
-            if (!isNaN(age)) { // Only add customers with valid age
-                const customer = {
-                    id: row.id,
-                    firstName: row.firstName,
-                    lastName: row.lastName,
-                    email: row.email,
-                    age: age
-                };
-                customers.push(customer);
-            }
-        }).on('end', async () => {
-            await Customer.insertMany(customers)
-                .then(() => console.log('Customers loaded successfully'))
-                .catch((error) => console.error('Error loading customers:', error));
-        });
+function loadCustomers() {
+    return new Promise((resolve, reject) => {
+        const customers = [];
+        fs.createReadStream('data/users.csv')
+            .pipe(csv())
+            .on('data', (row) => {
+                const age = parseInt(row.age);
+                if (!isNaN(age)) {
+                    const customer = {
+                        id: row.id,
+                        firstName: row.firstName,
+                        lastName: row.lastName,
+                        email: row.email,
+                        age: age
+                    };
+                    customers.push(customer);
+                }
+            })
+            .on('end', async () => {
+                try {
+                    await Customer.insertMany(customers);
+                    console.log('Customers loaded successfully');
+                    resolve();
+                } catch (error) {
+                    console.error('Error loading customers:', error);
+                    reject(error);
+                }
+            });
+    });
 }
 
- function loadOrders() {
-    const orders = [];
-    fs.createReadStream('data/orders.csv')
-        .pipe(csv())
-        .on('data', (row) => {
-            const order = {
-                order_id: row.order_id,
-                user_id: row.user_id,
-                status: row.status,
-                gender: row.gender,
-                created_at: row.created_at ? new Date(row.created_at) : undefined,
-                returned_at: row.returned_at ? new Date(row.returned_at) : undefined,
-                shipped_at: row.shipped_at ? new Date(row.shipped_at) : undefined,
-                delivered_at: row.delivered_at ? new Date(row.delivered_at) : undefined,
-                num_of_item: parseInt(row.num_of_item)
-            };
-            orders.push(order); // <-- FIXED
-        }).on('end', async () => {
-            await Order.insertMany(orders)
-                .then(() => console.log('Orders loaded successfully'))
-                .catch((error) => console.error('Error loading orders:', error));
-                await verifyCounts();
-                mongoose.disconnect();
-        });
+function loadOrders() {
+    return new Promise((resolve, reject) => {
+        const orders = [];
+        fs.createReadStream('data/orders.csv')
+            .pipe(csv())
+            .on('data', async (row) => {
+                // Find the customer whose 'id' matches row.user_id
+                const customer = await Customer.findOne({ id: row.user_id });
+                if (customer) {
+                    const order = {
+                        order_id: row.order_id,
+                        user_id: customer._id.toString(), // Use the actual _id
+                        status: row.status,
+                        gender: row.gender,
+                        created_at: row.created_at ? new Date(row.created_at) : undefined,
+                        returned_at: row.returned_at ? new Date(row.returned_at) : undefined,
+                        shipped_at: row.shipped_at ? new Date(row.shipped_at) : undefined,
+                        delivered_at: row.delivered_at ? new Date(row.delivered_at) : undefined,
+                        numberOfItems: parseInt(row.num_of_item)
+                    };
+                    orders.push(order);
+                }
+            })
+            .on('end', async () => {
+                try {
+                    await Order.deleteMany({});
+                    await Order.insertMany(orders);
+                    console.log('Orders loaded successfully');
+                    resolve();
+                } catch (error) {
+                    console.error('Error loading orders:', error);
+                    reject(error);
+                }
+            });
+    });
 }
 
 const seedDatabase = async () => {
